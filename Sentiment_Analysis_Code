@@ -1,0 +1,984 @@
+
+#========================================================================================
+#                        Load CSV File
+#========================================================================================
+
+# Load the dataset
+tweets <- read.csv("D:\\DATA SCIENCE\\Dissertation\\Data\\Twitter.csv", stringsAsFactors = FALSE)
+
+# Check the structure of the dataset
+str(tweets)
+
+# Check the first few rows of the dataset
+head(tweets)
+
+# Check the column names
+colnames(tweets)
+
+# Check the data types of each column
+sapply(tweets, class)
+
+# Check the summary statistics of numeric columns (if any)
+summary(tweets)
+
+#========================================================================================
+#                       missing values
+#========================================================================================
+
+# Check for missing values
+missing_values <- colSums(is.na(tweets))
+
+# Display the count of missing values for each column
+print(missing_values)
+
+# Plot a bar graph to visualize the missing values
+library(ggplot2)
+library(dplyr)
+
+missing_df <- data.frame(column = names(missing_values), missing_values = missing_values) %>%
+  mutate(column = factor(column, levels = names(tweets)))
+
+ggplot(missing_df, aes(x = column, y = missing_values)) +
+  geom_bar(stat = "identity", fill = "skyblue", width = 0.5) +
+  labs(title = "Missing Values by Column", x = "Column", y = "Number of Missing Values") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#========================================================================================
+#                       Remove missing values
+#========================================================================================
+
+# Remove rows with missing values
+tweets <- tweets[complete.cases(tweets), ]
+
+# Create a dataframe with the number of missing values after removing
+missing_df_removed <- data.frame(column = names(tweets),
+                                 missing_values = colSums(is.na(tweets))) %>%
+  mutate(column = factor(column, levels = names(tweets)))
+
+# Create a bar plot for the number of missing values after removing
+ggplot(missing_df_removed, aes(x = column, y = missing_values)) +
+  geom_bar(stat = "identity", fill = "skyblue", width = 0.5) +
+  labs(title = "Missing Values by Column (After Removing)", x = "Column", y = "Number of Missing Values") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Remove duplicate tweets (if any)
+tweets <- unique(tweets)
+
+# Create a copy of the dataset
+tweets_copy <- tweets
+
+# Verify the copy
+str(tweets_copy)
+
+#========================================================================================
+#                       Data Pre-Processing
+#========================================================================================
+
+# Convert "date" column to datetime format
+tweets_copy$date <- as.POSIXct(tweets_copy$date, format = "%Y-%m-%d %H:%M:%S")
+
+# Verify the changes
+str(tweets_copy)
+head(tweets_copy)
+
+# Convert "content" column to lowercase
+tweets_copy$content <- tolower(tweets_copy$content)
+
+# Remove single characters
+tweets_copy$content <- gsub("\\s\\w{1}\\s", " ", tweets_copy$content)
+
+# Remove multiple spaces and replace with a single space
+tweets_copy$content <- gsub("\\s+", " ", tweets_copy$content)
+
+# Remove URLs from the "content" column
+tweets_copy$content <- gsub("http\\S+|www\\S+", "", tweets_copy$content)
+
+# Make a copy of the "content" column
+tweets_copy$content_copy <- tweets_copy$content
+
+# Remove special characters from the "content" column
+tweets_copy$content_copy <- gsub("[^A-Za-z0-9 ]+", "", tweets_copy$content_copy)
+
+# Remove hashtags from the "content" column
+tweets_copy$content_copy <- gsub("#\\w+", "", tweets_copy$content_copy)
+
+# Remove Twitter handles starting with @
+tweets_copy$content_copy <- gsub("@\\w+", "", tweets_copy$content_copy)
+
+#Remove Empty tweets
+tweets_copy <- tweets_copy[!tweets_copy$content_copy == "", ]
+
+# Verify the changes
+str(tweets_copy)
+head(tweets_copy)
+
+# Load the required package
+library(dplyr)
+
+# Remove duplicate rows
+tweets_unique <- distinct(tweets_copy)
+
+# Count unique values in each column
+unique_counts <- sapply(tweets_copy, function(x) n_distinct(x, na.rm = TRUE))
+
+# Print the unique counts
+print(unique_counts)
+
+
+#========================================================================================
+#                       Time Analysis
+#========================================================================================
+
+# Convert the date-time column to date
+tweets_copy$date <- as.Date(tweets_copy$date)
+
+# Verify the changes
+str(tweets_copy$date)
+
+# Check the range of dates
+date_range <- range(tweets_copy$date, na.rm = TRUE)
+
+# Print the start and end dates
+start_date <- date_range[1]
+end_date <- date_range[2]
+print(start_date)
+print(end_date)
+
+
+#========================================================================================
+#                       Time Analysis Per Month
+#========================================================================================
+# Load the required packages
+library(dplyr)
+library(ggplot2)
+# Extract month from the date column
+tweets_copy$month <- format(tweets_copy$date, "%Y-%m")
+
+# Calculate the tweet counts per month
+tweet_counts <- table(tweets_copy$month)
+
+# Convert the tweet counts to a data frame
+tweet_counts_df <- data.frame(month = names(tweet_counts), tweet_count = as.numeric(tweet_counts))
+
+# Find the month with the highest tweet count
+max_count_month <- tweet_counts_df$tweet_count[tweet_counts_df$tweet_count == max(tweet_counts_df$tweet_count)]
+max_count_month <- as.character(tweet_counts_df$month[tweet_counts_df$tweet_count == max(tweet_counts_df$tweet_count)])
+
+# Plot the tweet counts per month
+ggplot(tweet_counts_df, aes(x = month, y = tweet_count, fill = tweet_count)) +
+  geom_bar(stat = "identity", width = 0.5, color = "black") +
+  labs(title = "Tweet Counts per Month",
+       x = "Month",
+       y = "Tweet Count",
+       fill = "Tweet Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  geom_text(aes(label = tweet_count), vjust = -0.5, color = "black", size = 3) +
+  geom_text(data = tweet_counts_df[tweet_counts_df$tweet_count == max(tweet_counts_df$tweet_count), ],
+            aes(label = tweet_count), vjust = -1.5, color = "red", size = 4) +
+  scale_fill_gradient(low = "skyblue", high = "darkblue")
+
+#========================================================================================
+#                       Time Analysis per week
+#========================================================================================
+
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Calculate the number of tweets per week
+tweets_by_week <- tweets_copy %>%
+  group_by(week = floor_date(date, "week")) %>%
+  summarize(count = n()) %>%
+  mutate(week_start = format(week, "%Y-%m-%d"),
+         week_end = format(week + days(6), "%Y-%m-%d"))
+
+# Create an attractive bar plot
+ggplot(tweets_by_week, aes(x = week_start, y = count, fill = week_start)) +
+  geom_bar(stat = "identity", width = 0.8, color = "black") +
+  labs(title = "Number of Tweets per Week",
+       x = "Week Start",
+       y = "Count",
+       fill = "Week Start") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  geom_text(aes(label = count), vjust = -0.5, color = "black", size = 3) +
+  scale_fill_viridis_d(option = "plasma", direction = -1) +
+  guides(fill = guide_legend(title = "Week Start"))
+
+#========================================================================================
+#                      Time Analysis Per day
+#========================================================================================
+
+
+library(dplyr)
+library(ggplot2)
+
+# Calculate the number of tweet counts per day
+tweets_by_day <- tweets_copy %>%
+  group_by(day = as.Date(date)) %>%
+  summarize(count = n()) %>%
+  mutate(day = format(day, "%Y-%m-%d"))
+
+# Create a bar plot
+ggplot(tweets_by_day, aes(x = day, y = count, fill = day)) +
+  geom_bar(stat = "identity", width = 0.8, color = "black") +
+  labs(title = "Number of Tweet Counts per Day",
+       x = "Day",
+       y = "Count",
+       fill = "Day") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  geom_text(aes(label = count), vjust = -0.5, color = "black", size = 3)
+
+#========================================================================================
+#                      Most used top 20 #Hashtags
+#========================================================================================
+
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(ggthemes)
+
+# Filter the hashtags excluding "chapgpt"
+hashtags_filtered <- tweets_copy %>%
+  filter(!grepl("chatgpt", tolower(content))) %>%
+  mutate(hashtags = str_extract_all(content, "#\\w+")) %>%
+  unnest(hashtags)
+
+# Count the occurrences of each hashtag
+top_hashtags <- hashtags_filtered %>%
+  count(hashtags) %>%
+  arrange(desc(n)) %>%
+  top_n(20)
+
+# Create a gradient color palette
+color_palette <- scale_fill_gradient(low = "blue", high = "#FF5722")
+
+# Plot the most used hashtags
+ggplot(top_hashtags, aes(x = reorder(hashtags, n), y = n, fill = n)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  color_palette +
+  labs(title = "Top 20 Most Used Hashtags (Excluding #chapgpt)",
+       x = "Hashtags",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 16, face = "bold"),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank()) +
+  geom_text(aes(label = n), vjust = -0.5, color = "black", size = 4)
+
+#========================================================================================
+#                       Most mentioned top 20 username
+#========================================================================================
+
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+
+# Extract mentioned users using regular expression
+mentioned_users <- str_extract_all(tweets_copy$content, "@\\w+") 
+  
+# Filter out tweets with no mentioned users
+mentioned_users <- mentioned_users[lengths(mentioned_users) > 0]
+
+# Count the occurrences of each mentioned user
+mentioned_users_df <- data.frame(User = unlist(mentioned_users)) %>%
+  count(User) %>%
+  arrange(desc(n)) %>%
+  top_n(20)
+
+# Plot the most mentioned users
+ggplot(mentioned_users_df, aes(x = reorder(User, n), y = n, fill = n)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  scale_fill_gradient(low = "blue", high = "#FF5722") +
+  labs(title = "Top 20 Most Mentioned Users",
+       x = "User",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 16, face = "bold"),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank()) +
+  geom_text(aes(label = n), vjust = -0.5, color = "black", size = 4)
+
+
+
+# Create a copy of the dataset
+tweets_copy1 <- tweets_copy
+
+#========================================================================================
+#                       Vader Sentiment Analysis
+#========================================================================================
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(spellcheckr)
+library(tidytext)
+library(hunspell)
+
+# Define sentiment labels based on a threshold
+label_sentiment <- function(x) {
+  if (x < -0.05) return('negative')
+  if (x > 0.35) return('positive')
+  return('neutral')
+}
+
+# Text Data Preprocessing
+tweets_copy$words <- str_extract_all(tweets_copy$content, "\\w+")
+tweets_copy$errors <- sapply(tweets_copy$words, function(x) sum(!hunspell_check(x)))
+tweets_copy$errors_count <- sapply(tweets_copy$errors, length)
+tweets_copy$words_count <- sapply(tweets_copy$words, length)
+tweets_copy$sentence_length <- nchar(tweets_copy$content)
+
+head(tweets_copy)
+# Install and load the sentiment package
+library(sentimentr)
+library(syuzhet)
+
+# Perform sentiment analysis using VADER (syuzhet)
+tweets_copy$vader_sentiment <- get_sentiment(tweets_copy$content, method = "syuzhet")
+
+# Define sentiment labels based on VADER scores
+label_sentiment <- function(x) {
+  if (x < -0.05) return('negative')
+  if (x > 0.35) return('positive')
+  return('neutral')
+}
+
+# Label sentiment based on VADER scores
+tweets_copy$vader_label <- sapply(tweets_copy$vader_sentiment, label_sentiment)
+
+head(tweets_copy)
+#========================================================================================
+#                       Sentiment analysis visualization
+#========================================================================================
+library(ggplot2)
+
+# Calculate the count of each sentiment label
+sentiment_counts <- table(tweets_copy$vader_label)
+
+# Create a data frame for plotting
+sentiment_data <- data.frame(sentiment = names(sentiment_counts),
+                             count = as.numeric(sentiment_counts))
+
+# Create a bar plot
+ggplot(sentiment_data, aes(x = sentiment, y = count, fill = sentiment)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Sentiment", y = "Count", title = "Distribution of Sentiment Labels") +
+  theme_minimal()
+
+#========================================================================================
+#                       Sentiment compoarision by month
+#========================================================================================
+#Sentiment Comparison by month
+
+# Remove rows with "NA" values in the 'vader_label' column
+tweets_copy <- filter(tweets_copy, !is.na(vader_label))
+
+# Remove rows with "NA" values in the 'month' column
+tweets_copy <- filter(tweets_copy, !is.na(month))
+
+# Calculate the count of each sentiment label for each month
+sentiment_by_month <- tweets_copy %>%
+  group_by(month, vader_label) %>%
+  summarise(tweet_count = n())
+
+# Plot the sentiment comparison using stacked bar charts
+ggplot(sentiment_by_month, aes(x = month, y = tweet_count, fill = vader_label)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Sentiment Comparison by Month", x = "Month", y = "Tweet Count", fill = "Sentiment") +
+  theme_minimal()
+
+#========================================================================================
+#                       Top 20 usernames with highest Vader sentiment scores
+#========================================================================================
+
+library(ggplot2)
+library(dplyr)
+
+top_usernames <- tweets_copy %>%
+  group_by(username) %>%
+  summarize(avg_vader_sentiment = mean(vader_sentiment), .groups = "drop") %>%
+  top_n(20, avg_vader_sentiment) %>%
+  arrange(desc(avg_vader_sentiment))
+
+# Plot sentiment analysis by top 20 usernames
+ggplot(top_usernames, aes(x = reorder(username, avg_vader_sentiment), y = avg_vader_sentiment, fill = avg_vader_sentiment)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Username", y = "Average Vader Sentiment", title = "Sentiment Analysis by Top 20 Usernames") +
+  scale_fill_gradient(low = "red", high = "green") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#========================================================================================
+#                 top 20 positive tweets username according to vader_sentiment
+#========================================================================================
+
+library(ggplot2)
+library(dplyr)
+
+# Filter for top 20 positive tweets
+top_positive_tweets <- tweets_copy %>%
+  filter(vader_label == "positive") %>%
+  arrange(desc(vader_sentiment)) %>%
+  slice_head(n = 20)
+
+# Create a bar plot for top 20 positive tweets with usernames
+ggplot(top_positive_tweets, aes(x = reorder(username, vader_sentiment), y = vader_sentiment, fill = vader_sentiment)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Username", y = "Vader Sentiment", title = "Top 20 Positive Tweets with Usernames") +
+  scale_fill_gradient(low = "red", high = "green") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#========================================================================================
+#                 top 20 negative tweets username according to vader_sentiment
+#========================================================================================
+
+library(ggplot2)
+library(dplyr)
+
+# Filter the top 20 negative tweets
+top_negative_tweets <- tweets_copy %>%
+  filter(vader_label == "negative") %>%
+  arrange(vader_sentiment) %>%
+  head(20)
+
+# Create a bar plot for top 20 negative tweets with usernames
+ggplot(top_negative_tweets, aes(x = reorder(username, vader_sentiment), y = vader_sentiment, fill = vader_sentiment)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Username", y = "Vader Sentiment", title = "Top 20 Negative Tweets with Usernames") +
+  scale_fill_gradient(low = "red", high = "green") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#========================================================================================
+#                 top 10 most liked tweets with lables
+#========================================================================================
+
+
+colnames(tweets_copy)
+# Filter the top 10 most liked tweets
+top_liked_tweets <- tweets_copy %>%
+  arrange(desc(like_count)) %>%
+  head(10)
+
+# Select only the required columns (content_copy, vader_label, and like_count)
+top_liked_tweets <- top_liked_tweets[, c("content_copy", "vader_label", "like_count")]
+
+# Print the top 10 most liked tweets with their Vader labels and like counts
+print(top_liked_tweets)
+
+
+library(ggplot2)
+
+# Filter the top 10 most liked tweets
+top_liked_tweets <- tweets_copy %>%
+  arrange(desc(like_count)) %>%
+  head(10)
+
+# Select only the required columns (username and like_count)
+top_liked_tweets <- top_liked_tweets[, c("username", "like_count")]
+
+# Plot the top 10 most liked tweets with usernames and like counts
+ggplot(top_liked_tweets, aes(x = reorder(username, like_count), y = like_count, fill = username)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  labs(title = "Top 10 Most Liked Tweets",
+       x = "Username",
+       y = "Like Count",
+       fill = "Username") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +
+  geom_text(aes(label = like_count), vjust = -0.5, color = "black", size = 3)
+
+#========================================================================================
+#                 top 10 most liked retweets with lables
+#========================================================================================
+
+# Filter the top 10 most retweeted tweets
+top_retweeted_tweets <- tweets_copy %>%
+  arrange(desc(retweet_count)) %>%
+  head(10)
+
+# Select only the required columns (content_copy, vader_label, and retweet_count)
+top_retweeted_tweets <- top_retweeted_tweets[, c("content_copy", "vader_label", "retweet_count")]
+
+# Print the top 10 most retweeted tweets with their Vader labels and retweet counts
+print(top_retweeted_tweets)
+
+# Create a custom color palette
+custom_colors <- c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                   "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf")
+
+# Create a bar plot for top retweeted tweets with retweet count and username
+ggplot(top_retweeted_tweets, aes(x = reorder(username, retweet_count), y = retweet_count, fill = username)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  labs(title = "Top 10 Most Retweeted Tweets",
+       x = "Username",
+       y = "Retweet Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = custom_colors) +  # Use the custom color palette
+  geom_text(aes(label = retweet_count), vjust = -0.5, color = "black", size = 3)
+
+#========================================================================================
+#                 Likes vs Retweets
+#========================================================================================
+
+# Define the maximum thresholds for like count and retweet count
+max_like_count <- 2000
+max_retweet_count <- 500
+
+
+# Filter the DataFrame to include only rows where like_count and retweet_count are below the thresholds
+df_filtered <-tweets_copy[tweets_copy$like_count <= max_like_count & tweets_copy$retweet_count <= max_retweet_count, ]
+
+# Scatter plot of likes vs. retweets
+library(ggplot2)
+library(ggpubr)
+
+# Scatter plot of likes vs. retweets
+ggplot(df_filtered, aes(x = like_count, y = retweet_count)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Likes vs. Retweets", x = "Likes", y = "Retweets") +
+  theme_minimal()
+
+# Calculate the Pearson correlation coefficient
+correlation <- cor(df_filtered$like_count, df_filtered$retweet_count)
+
+# Print the correlation coefficient
+print(correlation)
+
+#========================================================================================
+#                 Wordcloud
+#========================================================================================
+
+
+library(tidytext)
+library(wordcloud)
+library(RColorBrewer)
+
+library(dplyr)
+library(tidyr)
+
+colnames(tweets_copy)
+# Step 1: Tokenization
+tweets_copy$words <- strsplit(tweets_copy$content_copy, "\\s+")
+
+head(tweets_copy)
+
+# Step 2: Stemming or Lemmatization (Choose one approach)
+# Option 1: Stemming
+library(SnowballC)
+stemmer <- function(words) {
+  require(SnowballC)
+  wordStem(words)
+}
+tweets_copy$words <- lapply(tweets_copy$words, stemmer)
+
+head(tweets_copy)
+
+# Step 3: Stopword removal
+# Load the 'tm' package
+library(tm)
+stop_words <- stopwords("en")
+tweets_copy$words <- lapply(tweets_copy$words, function(words) words[!words %in% stop_words])
+
+# Combine all words into a single character vector
+all_words <- unlist(tweets_copy$words)
+
+# Create a frequency table of words
+word_freq <- table(all_words)
+
+# Sort the words by frequency in descending order
+sorted_word_freq <- sort(word_freq, decreasing = TRUE)
+
+# Define a color palette for the word cloud
+# You can choose your own colors or use built-in palettes like 'rainbow()', 'terrain.colors()', 'heat.colors()', etc.
+color_palette <- rainbow(length(sorted_word_freq))
+
+# Generate the word cloud using the most common 100 words (you can adjust the 'max.words' parameter as needed)
+wordcloud(words = names(sorted_word_freq), freq = sorted_word_freq, max.words = 200, random.order = FALSE, colors = color_palette)
+
+
+#================excluding some words=========================
+
+# Create a frequency table of words
+word_freq <- table(all_words)
+
+# Remove words you want to exclude
+words_to_exclude <- c("chatgpt", "gpt", "openai", "ai")
+word_freq <- word_freq[!(names(word_freq) %in% words_to_exclude)]
+
+# Sort the words by frequency in descending order
+sorted_word_freq <- sort(word_freq, decreasing = TRUE)
+
+# Define a color palette for the word cloud
+color_palette <- rainbow(length(sorted_word_freq))
+
+# Generate the word cloud using the most common 100 words (you can adjust the 'max.words' parameter as needed)
+wordcloud(words = names(sorted_word_freq), freq = sorted_word_freq, max.words = 200, random.order = FALSE, colors = color_palette)
+
+
+
+
+#========================================================================================
+#                Hashtags
+#========================================================================================
+#cloud for hashtag
+
+# Step 1: Extract hashtags from the 'content_copy' column using regular expressions
+hashtags <- unlist(regmatches(tweets_copy$content, gregexpr("#\\w+", tweets_copy$content)))
+
+# Step 2: Remove the '#' symbol from the extracted hashtags
+hashtags <- gsub("#", "", hashtags)
+
+# Step 3: Create a frequency table of hashtags
+hashtag_freq <- table(hashtags)
+
+# Sort the hashtags by frequency in descending order
+sorted_hashtag_freq <- sort(hashtag_freq, decreasing = TRUE)
+
+# Check if the frequency table is not empty before generating the word cloud
+if (length(sorted_hashtag_freq) > 0) {
+  # Define a color palette for the word cloud (optional)
+  color_palette <- rainbow(length(sorted_hashtag_freq))
+  
+  # Generate the word cloud using the most common hashtags (you can adjust the 'max.words' parameter as needed)
+  wordcloud(words = names(sorted_hashtag_freq), freq = sorted_hashtag_freq, max.words = 200, random.order = FALSE, colors = color_palette)
+} else {
+  cat("No hashtags found in the dataset.")
+}
+
+
+#========================================================================================
+#                Positive words
+#========================================================================================
+#Positive words
+
+# Load the necessary libraries
+library(tm)
+
+# Load the necessary libraries
+library(tm)
+
+# Step 1: Filter the data set to include only positive tweets
+positive_tweets <- tweets_copy[tweets_copy$vader_label == "positive", ]
+
+# Step 2: Combine all the positive tweets into a single string
+positive_words <- paste(positive_tweets$content_copy, collapse = " ")
+
+# Step 3: Get the stopwords for a specific language (e.g., English)
+stopwords <- stopwords("en")
+
+# Step 4: Remove stopwords from the string
+positive_words <- removeWords(positive_words, stopwords)
+
+
+# Step 5: Create a word frequency table for positive words
+word_freq_positive <- table(strsplit(positive_words, "\\s+"))
+
+# Step 6: Convert the word frequency table to a data frame
+word_freq_positive_df <- as.data.frame(word_freq_positive, stringsAsFactors = FALSE)
+colnames(word_freq_positive_df) <- c("word", "frequency")
+
+# Step 7: Select the top 200 positive words
+top_positive_words <- head(word_freq_positive_df[order(word_freq_positive_df$frequency, decreasing = TRUE), ], 200)
+
+# Step 8: Define a color palette for the word cloud (optional)
+# Choose any color palette you like or create your own
+color_palette <- rainbow(length(top_positive_words$word))
+
+# Step 9: Generate the word cloud for positive words
+wordcloud(words = top_positive_words$word, freq = top_positive_words$frequency, max.words = 200, random.order = FALSE, colors = color_palette)
+
+#=================Excluding words=====================================
+
+# Step 1: Filter the data set to include only positive tweets
+positive_tweets <- tweets_copy[tweets_copy$vader_label == "positive", ]
+
+# Step 2: Combine all the positive tweets into a single string
+positive_words <- paste(positive_tweets$content_copy, collapse = " ")
+
+# Step 3: Get the stopwords for a specific language (e.g., English)
+stopwords <- stopwords("en")
+
+# Step 4: Remove stopwords from the string
+positive_words <- removeWords(positive_words, stopwords)
+
+# Words to exclude
+words_to_exclude <- c("chatgpt", "gpt", "openai", "ai", "chat")
+positive_words <- removeWords(positive_words, words_to_exclude)
+
+# Step 5: Create a word frequency table for positive words
+word_freq_positive <- table(strsplit(positive_words, "\\s+"))
+
+# Step 6: Convert the word frequency table to a data frame
+word_freq_positive_df <- as.data.frame(word_freq_positive, stringsAsFactors = FALSE)
+colnames(word_freq_positive_df) <- c("word", "frequency")
+
+# Step 7: Select the top 200 positive words
+top_positive_words <- head(word_freq_positive_df[order(word_freq_positive_df$frequency, decreasing = TRUE), ], 200)
+
+# Step 8: Define a color palette for the word cloud (optional)
+# Choose any color palette you like or create your own
+color_palette <- rainbow(length(top_positive_words$word))
+
+# Step 9: Generate the word cloud for positive words
+#wordcloud(words = top_positive_words$word, freq = top_positive_words$frequency, max.words = 100, random.order = FALSE, colors = color_palette)
+wordcloud(
+  words = top_positive_words$word,
+  freq = top_positive_words$frequency,
+  max.words = 200,  # Adjust the number of words displayed
+  random.order = FALSE,
+  colors = color_palette,
+  scale = c(2, 0.5)  # Adjust the font size range
+)
+
+#========================================================================================
+#                 Negative words
+#========================================================================================
+
+#Negative words
+
+# Step 1: Filter the data set to include only negative tweets
+negative_tweets <- tweets_copy[tweets_copy$vader_label == "negative", ]
+
+# Step 2: Combine all the negative tweets into a single string
+negative_words <- paste(negative_tweets$content_copy, collapse = " ")
+negative_words <- removeWords(negative_words, stopwords)
+
+# Step 3: Create a word frequency table for negative words
+word_freq_negative <- table(strsplit(negative_words, "\\s+"))
+
+# Step 4: Convert the word frequency table to a data frame
+word_freq_negative_df <- as.data.frame(word_freq_negative, stringsAsFactors = FALSE)
+colnames(word_freq_negative_df) <- c("word", "frequency")
+
+# Step 5: Select the top 200 negative words
+top_negative_words <- head(word_freq_negative_df[order(word_freq_negative_df$frequency, decreasing = TRUE), ], 200)
+
+# Step 6: Define a color palette for the word cloud (optional)
+# Choose any color palette you like or create your own
+color_palette <- rainbow(length(top_negative_words$word), start = 0.2, end = 0.8)
+
+# Step 7: Generate the word cloud for negative words
+wordcloud(words = top_negative_words$word, freq = top_negative_words$frequency, max.words = 200, random.order = FALSE, colors = color_palette)
+ 
+#============Excluding words=================================
+# Step 1: Filter the data set to include only negative tweets
+negative_tweets <- tweets_copy[tweets_copy$vader_label == "negative", ]
+
+# Step 2: Combine all the negative tweets into a single string
+negative_words <- paste(negative_tweets$content_copy, collapse = " ")
+stopwords <- stopwords("en")
+words_to_exclude <- c("chatgpt", "gpt", "openai", "ai", "chat")
+negative_words <- removeWords(negative_words, c(stopwords, words_to_exclude))
+
+# Step 3: Create a word frequency table for negative words
+word_freq_negative <- table(strsplit(negative_words, "\\s+"))
+
+# Step 4: Convert the word frequency table to a data frame
+word_freq_negative_df <- as.data.frame(word_freq_negative, stringsAsFactors = FALSE)
+colnames(word_freq_negative_df) <- c("word", "frequency")
+
+# Step 5: Select the top 200 negative words
+top_negative_words <- head(word_freq_negative_df[order(word_freq_negative_df$frequency, decreasing = TRUE), ], 200)
+
+# Step 6: Define a color palette for the word cloud (optional)
+# Choose any color palette you like or create your own
+color_palette <- rainbow(length(top_negative_words$word), start = 0.2, end = 0.8)
+
+# Step 7: Generate the word cloud for negative words
+#wordcloud(words = top_negative_words$word, freq = top_negative_words$frequency, max.words = 200, random.order = FALSE, colors = color_palette)
+
+wordcloud(
+  words = top_negative_words$word,
+  freq = top_negative_words$frequency,
+  max.words = 200,
+  random.order = FALSE,
+  colors = color_palette,
+  scale = c(2, 0.5)  # Adjust scaling values as needed
+)
+
+
+#========================================================================================
+#                 Topic Analysis
+#========================================================================================
+
+
+# Load the required libraries
+library(tm)
+library(topicmodels)
+
+# Assuming 'tweets_copy' is the name of your data frame containing the tweets
+
+# Step 1: Sort the data to get the 10000 most liked tweets
+top_10000_liked_tweets <- tweets_copy[order(tweets_copy$like_count, decreasing = TRUE), ][1:10000, ]
+
+# Step 2: Preprocess the text data in the 'content_copy' column
+corpus <- Corpus(VectorSource(top_10000_liked_tweets$content_copy))
+corpus <- tm_map(corpus, content_transformer(tolower))  # Convert to lowercase
+corpus <- tm_map(corpus, removePunctuation)  # Remove punctuation
+corpus <- tm_map(corpus, removeNumbers)  # Remove numbers
+corpus <- tm_map(corpus, removeWords, stopwords("en"))  # Remove stopwords (optional)
+corpus <- tm_map(corpus, stripWhitespace)  # Strip white spaces
+corpus <- tm_map(corpus, stemDocument)  # Perform stemming (optional)
+# You can add more preprocessing steps based on your specific requirements
+
+# Step 3: Create a Document-Term Matrix (DTM)
+dtm <- DocumentTermMatrix(corpus)
+
+# Step 4: Apply LDA for topic modeling
+num_topics <- 10  # You can adjust the number of topics as needed
+lda_model <- LDA(dtm, k = num_topics)
+
+# Step 5: Print the top words for each topic
+top_words_per_topic <- terms(lda_model, 10)  # Change 10 to the number of top words you want to display
+print(top_words_per_topic)
+
+
+
+
+
+
+
+#--------------------------Not in used for now from here to -------------------------------------------------------------
+
+
+#=============================top10 tweets============
+
+library(dplyr)
+
+# Group the data by username and calculate the total number of likes for each user
+user_likes <- tweets_copy %>%
+  group_by(username) %>%
+  summarize(total_likes = sum(like_count)) %>%
+  arrange(desc(total_likes)) %>%
+  top_n(10)
+
+# Create a new column combining username and total_likes for readability
+user_likes$label <- paste(user_likes$username, "(", user_likes$total_likes, "likes)", sep = "")
+
+# Plot the top 10 usernames with the maximum number of likes
+ggplot(user_likes, aes(x = reorder(username, -total_likes), y = total_likes)) +
+  geom_bar(stat = "identity", fill = "Purple", width = 0.5) +
+  labs(title = "Top 10 Usernames with Maximum Likes",
+       x = "Username",
+       y = "Number of Likes") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = label), vjust = -0.5, color = "red", size = 3)
+
+
+
+#===================Retweets
+library(dplyr)
+library(ggplot2)
+
+# Group the data by username and calculate the total number of retweets for each user
+user_retweets <- tweets_copy %>%
+  group_by(username) %>%
+  summarize(total_retweets = sum(retweet_count)) %>%
+  arrange(desc(total_retweets)) %>%
+  top_n(10)
+
+# Create a new column combining username and total_retweets for readability
+user_retweets$label <- paste(user_retweets$username, "(", user_retweets$total_retweets, "retweets)", sep = "")
+
+# Plot the top 10 usernames with the maximum number of retweets
+ggplot(user_retweets, aes(x = reorder(username, -total_retweets), y = total_retweets)) +
+  geom_bar(stat = "identity", fill = "blue", width = 0.5) +
+  labs(title = "Top 10 Usernames with Maximum Retweets",
+       x = "Username",
+       y = "Number of Retweets") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = label), vjust = -0.5, color = "orange", size = 3)
+#wordcloude for common word
+
+library(wordcloud)
+
+# Generate a word frequency table
+word_freq <- table(unlist(strsplit(tweets_copy$content_copy, "\\s+")))
+
+# Get the top 100 most common words
+top_words <- head(sort(word_freq, decreasing = TRUE), 200)
+
+# Create a word cloud with colorful palette
+wordcloud(names(top_words), freq = top_words, random.order = FALSE,
+          colors = rainbow(length(top_words)))
+
+
+#Install and load the necessary packages
+library(wordcloud2)
+library(RColorBrewer)
+library(tm)
+
+#Filter the data set to include only positive tweets
+stopwords <- stopwords("en")
+positive_tweets <- tweets_copy[tweets_copy$vader_label == "positive", ]
+
+#Combine all the positive tweets into a single string
+positive_words <- paste(positive_tweets$content_copy, collapse = " ")
+positive_words <- removeWords(positive_words, stopwords)
+
+#Create a word frequency table
+word_freq <- table(strsplit(positive_words, "\\s+"))
+
+#Convert the word frequency table to a data frame
+word_freq_df <- as.data.frame(word_freq, stringsAsFactors = FALSE)
+colnames(word_freq_df) <- c("word", "frequency")
+
+#Select the top 200 positive words
+top_words <- head(word_freq_df[order(word_freq_df$frequency, decreasing = TRUE), ], 200)
+
+#Generate the word cloud
+wordcloud2(data = top_words, size = 1.5 , minSize = 5, color = "random-dark", backgroundColor = "white")
+
+
+
+#============Negative wordcloud
+# Assuming you have already loaded the necessary packages and filtered the data for positive tweets
+
+# Filter the data set to include only negative tweets
+negative_tweets <- tweets_copy[tweets_copy$vader_label == "negative", ]
+
+# Combine all the negative tweets into a single string
+negative_words <- paste(negative_tweets$content_copy, collapse = " ")
+negative_words <- removeWords(negative_words, stopwords)
+
+# Create a word frequency table for negative words
+word_freq_negative <- table(strsplit(negative_words, "\\s+"))
+
+# Convert the word frequency table to a data frame
+word_freq_negative_df <- as.data.frame(word_freq_negative, stringsAsFactors = FALSE)
+colnames(word_freq_negative_df) <- c("word", "frequency")
+
+# Select the top 200 negative words
+top_negative_words <- head(word_freq_negative_df[order(word_freq_negative_df$frequency, decreasing = TRUE), ], 200)
+
+# Define a color palette for the word cloud (you can use any built-in palette or create your own)
+# For example, using viridisLite's palette:
+library(viridisLite)
+color_palette <- viridisLite::magma(9)
+
+
+# Generate the word cloud for negative words with the chosen color palette
+wordcloud2(data = top_negative_words, size = 1.5 , minSize = 5, color = color_palette, backgroundColor = "white")
+
+#---------------------------till here ------------------------------------------------------------------------
+
+
+
